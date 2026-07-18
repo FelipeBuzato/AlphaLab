@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS stocks
+DROP TABLE IF EXISTS daily_prices
+DROP TABLE IF EXISTS dividends
