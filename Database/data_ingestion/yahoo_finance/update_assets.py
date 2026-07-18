@@ -29,11 +29,11 @@ assets_universe_df = pd.read_csv("../assets_universe.csv")
 assets_universe = {ticker: asset_type for ticker, asset_type in assets_universe_df.values}
 
 ## For the future:
-# Get ETF tickers
-# Get crypto tickers
-# Get index tickers 
-# Get future tickers 
-# Get commodity tickers
+# ETF tickers
+# crypto tickers
+# index tickers 
+# future tickers 
+# commodity tickers
 
 ## Find out which tickers need to be added to the database
 assets_to_add = {ticker: asset_type for ticker, asset_type in assets_universe.items()
