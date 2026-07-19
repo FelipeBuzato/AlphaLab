@@ -38,8 +38,8 @@ def rsi():
     pass
 
 
-def cross_sectional_rank(data, ascending=False):
-    return data.rank(axis=1, ascending=ascending, method="dense")
+def cross_sectional_rank(data, ascending=False, method="dense"):
+    return data.rank(axis=1, ascending=ascending, method=method)
 
 
 def zscore(data):
