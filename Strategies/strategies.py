@@ -54,3 +54,8 @@ def MA_strategy(prices, long_window, short_window=None):
     signal = short_ma > long_ma
     weights = signal.div(signal.sum(axis=1), axis="index").fillna(0)
     return weights
+
+
+def cash_only(prices):
+    weights = prices * 0
+    return weights
