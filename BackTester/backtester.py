@@ -2,25 +2,53 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+from .execution.perfect_execution import PerfectExecutionExecutor
+from .execution.fixed_slippage import FixedSlippageExecutor
+from .execution.volume_slippage import VolumeSlippageExecutor
 
 
 class BackTester:
-    def __init__(self, prices_open, prices_close, initial_capital=100000, rebalance='D', 
-                 execution = 'next_open'):
+    def __init__(self, prices_open, prices_close, volume=None, initial_capital=100000, rebalance='D', 
+                 execution_method = 'volume slippage', transaction_cost_rate = 0.0005, 
+                 slippage_rate=0.001):
+        
         self.initial_capital = initial_capital
         self.rebalance = rebalance
         self.prices_open = prices_open
         self.prices_close = prices_close
-        self.execution = execution   # TODO: Support different execution methods
+        self.volume = volume
+        self.execution_method = execution_method
+        self.transaction_cost_rate = transaction_cost_rate
+        self.slippage_rate = slippage_rate
         
+        self.cash = None
         self.weights = None
         self.shares = None
         self.portfolio_value = None
-        self.orders_history = None
+        self.order_executor = None
+
+
+    def get_order_executor(self, execution_method, transaction_cost_rate, slippage_rate):
+        if(execution_method == 'perfect execution'):
+            return PerfectExecutionExecutor(transaction_cost_rate)
+        
+        elif(execution_method == 'fixed slippage'):
+            return FixedSlippageExecutor(transaction_cost_rate, slippage_rate)
+        
+        elif(execution_method == 'volume slippage'):
+            if(self.volume is None):
+                raise ValueError("For volume-based slippage, you must pass Volume in the Backtester constructor.")
+            
+            volume = self.volume.shift(1).fillna(self.volume.median())
+            return VolumeSlippageExecutor(transaction_cost_rate, volume)
+        
+        else:
+            raise ValueError("Execution method invalid.")
 
 
     # Run backtest
     def run(self, weights, start, end):
+
         if(isinstance(start, str)):
             start = datetime.strptime(start, "%Y-%m-%d").date()
         if(isinstance(end, str)):
@@ -28,6 +56,9 @@ class BackTester:
         
         if start >= end:
             raise ValueError("Start date must be before end date.")
+        
+        # Order executor
+        self.order_executor = self.order_executor = self.get_order_executor(self.execution_method, self.transaction_cost_rate, self.slippage_rate)
         
         # Shift weights to avoid look-ahead bias
         self.weights = weights.shift(1).fillna(0)
@@ -37,13 +68,12 @@ class BackTester:
         dates = self.weights.index.tolist()
         self._validate_inputs()
 
-        # Initialize shares, portfolio value, cash and orders history
+        # Initialize shares, portfolio value and cash 
         initial_state_date = self.weights.index[0] - timedelta(days=1)
         new_index = self.weights.index.insert(0, initial_state_date)
         self.shares = pd.DataFrame(0.0, index=new_index, columns=self.weights.columns)
         self.cash = pd.Series(0.0, index=new_index)
         self.portfolio_value = pd.Series(0.0, index=self.weights.index)
-        self.orders_history = []
 
         # initialize shares and cash
         self.shares.iloc[0] = 0
@@ -55,7 +85,7 @@ class BackTester:
         for date in dates:
             # Rebalance or not rebalance
             if(previous_date is None or self.should_rebalance(previous_date, date)):
-                if(previous_date is None): previous_date = self.shares.index[0]
+                if(previous_date is None): previous_date = initial_state_date
                 self.rebalance_portfolio(previous_date, date)
             else:
                 self.shares.loc[date] = self.shares.loc[previous_date]
@@ -104,12 +134,15 @@ class BackTester:
     def rebalance_portfolio(self, previous_date, date):
 
         ## First, compute current portfolio value - the available amount we'll have 
-        ## to rebalance the position (buy/sell assets). We use the open prices to do so
-        open_prices = self.prices_open.loc[date]
+        ## to rebalance the position (buy/sell assets). 
+        # We use the open prices to do so
+        prices_open = self.prices_open.loc[date]
+        current_shares = self.shares.loc[previous_date]
+        current_cash = self.cash.loc[previous_date]
 
         # Portfolio value before rebalancing
-        cur_portfolio_value = float(self.cash.loc[previous_date])
-        cur_portfolio_value += float((self.shares.loc[previous_date] * self.prices_open.loc[date]).sum())
+        cur_portfolio_value = float(current_cash)
+        cur_portfolio_value += float((current_shares * prices_open).sum())
         
         ## Now, compute the target shares amounts
         # Target weights
@@ -119,80 +152,29 @@ class BackTester:
         value_per_asset = weights * cur_portfolio_value
         
         # How many shares of each asset match the asset's value
-        target_shares = value_per_asset / open_prices
+        target_shares = value_per_asset / prices_open
         target_shares = np.floor(target_shares)
-
-        current_shares = self.shares.loc[previous_date]
         delta_shares = target_shares - current_shares
-        current_cash = self.cash.loc[previous_date]
 
         ## Execute orders
-        new_shares, new_cash = self.execute_orders(date, current_shares, delta_shares, current_cash)
+        new_shares, new_cash = self.order_executor.execute_orders(date, prices_open, current_shares, delta_shares, current_cash)
         
         ## Update number of shares in the portfolio and cash amount
         self.shares.loc[date] = new_shares
         self.cash.loc[date] = new_cash
-        
-
-    def execute_orders(self, date, current_shares, delta_shares, cash, method='perfect execution'):
-        
-        buy_shares = delta_shares.clip(lower=0)
-        sell_shares = (-delta_shares).clip(lower=0)
-
-        if(method == 'perfect execution'):
-            # execution prices
-            execution_prices = self.prices_open.loc[date]
-
-            # sell first
-            cash += (sell_shares * execution_prices).sum()
-            for ticker in sell_shares[sell_shares > 0].index:
-                self.orders_history.append({
-                    "date": date,
-                    "ticker": ticker,
-                    "side": "SELL",
-                    "shares": sell_shares[ticker],
-                    "price": execution_prices[ticker],
-                    "cash after transaction": cash
-                })
-
-            # then buy
-            cash -= (buy_shares * execution_prices).sum()
-            for ticker in buy_shares[buy_shares > 0].index:
-                self.orders_history.append({
-                    "date": date,
-                    "ticker": ticker,
-                    "side": "BUY",
-                    "shares": buy_shares[ticker],
-                    "price": execution_prices[ticker],
-                    "cash after transaction": cash
-                })
-
-            if(cash < 0):
-                raise ValueError("Cash can not become negative.")
-
-            new_shares = current_shares + delta_shares
-            new_cash = float(cash)
-            return new_shares, new_cash
-
-        elif(method == 'fixed slippage'):
-            pass
-
-        else:
-            raise ValueError("Execution method not found.")
 
     
     # At the end of the day, update portfolio value
     def update_portfolio_value(self, date):
-        
         # Portfolio value is computed at the close of the day
-        close_prices = self.prices_close.loc[date]
+        prices_close = self.prices_close.loc[date]
 
         # Compute portfolio value based on the number of shares of each asset
         shares = self.shares.loc[date]
+        cash = self.cash.loc[date]
         
         # New portfolio value
-        new_value = float(self.cash.loc[date] + (shares * close_prices).sum())
-        self.portfolio_value.loc[date] = new_value
+        self.portfolio_value.loc[date] = float(cash + (shares * prices_close).sum())
 
 
     def get_backtest_results(self):
@@ -220,7 +202,7 @@ class BackTester:
         self.sharpe = float((excess_return / self.daily_returns.iloc[1:].std()) * np.sqrt(252))
 
         return {
-            'Orders': pd.DataFrame(self.orders_history),
+            'Orders': pd.DataFrame(self.order_executor.orders_history),
             'Shares': self.shares,
             'Portfolio Value': self.portfolio_value,
             'Weights': self.weights,

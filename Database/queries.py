@@ -268,12 +268,3 @@ def get_prices(assets=None, start=None, end=None, field="close", pivot=False):
         return prices[["date", "ticker", field]]
     else:
         return prices.pivot(index="date", columns="ticker", values=field)
-
-
-#def get_returns(assets=None, start=None, end=None, field="close"):
-#    prices = get_daily_prices(assets=assets, start=start, end=end)
-
- #   prices = prices.pivot(index="date", columns="ticker", values=field)
- #   returns = prices.pct_change()
-
- #   return returns
