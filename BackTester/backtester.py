@@ -23,6 +23,7 @@ class BackTester:
         
         self.cash = None
         self.weights = None
+        self.realized_weights = None
         self.shares = None
         self.portfolio_value = None
         self.order_executor = None
@@ -74,6 +75,9 @@ class BackTester:
         self.shares = pd.DataFrame(0.0, index=new_index, columns=self.weights.columns)
         self.cash = pd.Series(0.0, index=new_index)
         self.portfolio_value = pd.Series(0.0, index=self.weights.index)
+
+        # Realized weights (weights computed at the close of each day)
+        self.realized_weights = pd.DataFrame(0.0, index=self.weights.index, columns=self.weights.columns)
 
         # initialize shares and cash
         self.shares.iloc[0] = 0
@@ -152,7 +156,7 @@ class BackTester:
         value_per_asset = weights * cur_portfolio_value
         
         # How many shares of each asset match the asset's value
-        target_shares = value_per_asset / prices_open
+        target_shares = (value_per_asset / prices_open).fillna(0)
         target_shares = np.floor(target_shares)
         delta_shares = target_shares - current_shares
 
@@ -174,49 +178,67 @@ class BackTester:
         cash = self.cash.loc[date]
         
         # New portfolio value
-        self.portfolio_value.loc[date] = float(cash + (shares * prices_close).sum())
+        position_values = shares.fillna(0) * prices_close.fillna(0)
+        self.portfolio_value.loc[date] = float(cash + position_values.sum())
+
+        # Updating realized weights
+        self.realized_weights.loc[date] = position_values / self.portfolio_value.loc[date]
 
 
     def get_backtest_results(self):
         # Daily Returns
         self.daily_returns = self.portfolio_value.pct_change()
-        self.daily_returns.iloc[0] = 0.0
 
         # Cummulative returns
-        self.cum_daily_returns = float(self.portfolio_value.iloc[-1]) / self.initial_capital - 1
+        self.cum_daily_returns = self.portfolio_value / self.initial_capital - 1
+        self.cum_return = float(self.portfolio_value.iloc[-1]) / self.initial_capital - 1
+
+        # CAGR = Annualized cumulative return
+        years = (self.portfolio_value.index[-1] - self.portfolio_value.index[0]).days / 365.25
+        self.cagr = float((self.portfolio_value.iloc[-1] / self.initial_capital) ** (1 / years) - 1)
 
         # Drawdown
         running_max = self.portfolio_value.cummax()
         self.drawdown = (self.portfolio_value - running_max) / running_max
         self.max_drawdown = float(self.drawdown.min())
 
+        # Rolling  Annualized Volatility
+        self.rolling_volatility = self.daily_returns.rolling(window=252).std() * np.sqrt(252)
+        
         # Annualized volatility
-        self.annualized_volatility = float(self.daily_returns.iloc[1:].std() * np.sqrt(252))
+        self.annualized_volatility = float(self.daily_returns.std() * np.sqrt(252))
 
-        # CAGR = Annualized cumulative return
-        years = (self.portfolio_value.index[-1] - self.portfolio_value.index[0]).days / 365.25
-        self.cagr = float((self.portfolio_value.iloc[-1] / self.initial_capital) ** (1 / years) - 1)
+        # Sharpe ratio (assuming no benchmark)     # TODO Add benchmark
+        excess_return = self.daily_returns.mean()  
+        self.sharpe = float((excess_return / self.daily_returns.std()) * np.sqrt(252))
 
-        # Sharpe ratio
-        excess_return = self.daily_returns.iloc[1:].mean()  # assuming no benchmark     # TODO Add benchmark
-        self.sharpe = float((excess_return / self.daily_returns.iloc[1:].std()) * np.sqrt(252))
+        # Rolling sharpe
+        self.rolling_sharpe = (self.daily_returns.rolling(window=252).mean() / self.rolling_volatility) * 252
 
+        # Exposure
+        self.exposure = 1 - self.cash.loc[self.portfolio_value.index] / self.portfolio_value
+        
         return {
             'Orders': pd.DataFrame(self.order_executor.orders_history),
             'Shares': self.shares,
             'Portfolio Value': self.portfolio_value,
-            'Weights': self.weights,
+            'Target Weights': self.weights,
+            'Realized Weights': self.realized_weights,
             'Cash': self.cash,
             'Daily Returns': self.daily_returns,
             'Cumulative Daily Returns': self.cum_daily_returns,
+            'Drawdown': self.drawdown,
+            'Rolling Volatility': self.rolling_volatility,
+            'Rolling Sharpe': self.rolling_sharpe,
+            'Exposure': self.exposure,
             'Metrics': {
-                'Sharpe': self.sharpe,
                 'Min': float(self.portfolio_value.min()),
                 'Max': float(self.portfolio_value.max()),
-                'Drawdown': self.drawdown,
+                'Cumulative Return': self.cum_return,
+                'CAGR': self.cagr,
                 'Max Drawdown': self.max_drawdown,
                 'Volatility': self.annualized_volatility,
-                'CAGR': self.cagr
+                'Sharpe': self.sharpe
             }
         }
     
@@ -234,15 +256,3 @@ class BackTester:
 
         if not self.weights.columns.equals(self.prices_close.columns):
             raise ValueError("Weights and prices_close have different assets.")
-
-
-    def plot_portfolio_value(self):
-        if self.portfolio_value is None:
-            raise ValueError("Run the backtest before plotting.")
-
-        self.portfolio_value.plot(figsize=(10, 5))
-        plt.title("Portfolio Value")
-        plt.xlabel("Date")
-        plt.ylabel("Portfolio Value")
-        plt.grid(True)
-        plt.show()
