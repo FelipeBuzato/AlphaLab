@@ -218,8 +218,17 @@ class BackTester:
         # Exposure
         self.exposure = 1 - self.cash.loc[self.portfolio_value.index] / self.portfolio_value
         
+        # Trades
+        orders = self.order_executor.orders_history
+        if(len(orders) == 0):
+            orders_columns = ["date", "ticker", "side", "shares", "market price", "execution price",
+                             "transaction cost", "cash after transaction"]
+            orders = pd.DataFrame(columns=orders_columns)
+        else:
+            orders = pd.DataFrame(orders)
+        
         return {
-            'Orders': pd.DataFrame(self.order_executor.orders_history),
+            'Orders': orders,
             'Shares': self.shares,
             'Portfolio Value': self.portfolio_value,
             'Target Weights': self.weights,

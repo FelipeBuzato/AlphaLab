@@ -1,0 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+/* Fonte geral do dashboard */
+body {
+    /*font-family: "IBM Plex Sans", sans-serif !important;*/
+    font-family: "IBM Plex Mono", monospace !important;
+}
+
+/* Tudo que é dado/tabela */
+.dash-table-container,
+.dash-spreadsheet-container,
+.dash-cell-value {
+    font-family: "IBM Plex Mono", monospace !important;
+}
