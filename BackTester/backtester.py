@@ -10,7 +10,7 @@ from .execution.volume_slippage import VolumeSlippageExecutor
 class BackTester:
     def __init__(self, prices_open, prices_close, volume=None, initial_capital=100000, rebalance='D', 
                  execution_method = 'volume slippage', transaction_cost_rate = 0.0005, 
-                 slippage_rate=0.001):
+                 slippage_rate=0.001, risk_free=None, benchmark=None):
         
         self.initial_capital = initial_capital
         self.rebalance = rebalance
@@ -20,6 +20,8 @@ class BackTester:
         self.execution_method = execution_method
         self.transaction_cost_rate = transaction_cost_rate
         self.slippage_rate = slippage_rate
+        self.risk_free = risk_free
+        self.benchmark = benchmark
         
         self.cash = None
         self.weights = None
@@ -65,9 +67,7 @@ class BackTester:
         self.weights = weights.shift(1).fillna(0)
         
         # Select backtest dates
-        self.weights = self.weights[(self.weights.index >= start) & (self.weights.index <= end)]
-        dates = self.weights.index.tolist()
-        self._validate_inputs()
+        dates = self._align_dates(start, end)
 
         # Initialize shares, portfolio value and cash 
         initial_state_date = self.weights.index[0] - timedelta(days=1)
@@ -208,12 +208,16 @@ class BackTester:
         # Annualized volatility
         self.annualized_volatility = float(self.daily_returns.std() * np.sqrt(252))
 
-        # Sharpe ratio (assuming no benchmark)     # TODO Add benchmark
-        excess_return = self.daily_returns.mean()  
-        self.sharpe = float((excess_return / self.daily_returns.std()) * np.sqrt(252))
+        # Sharpe ratio
+        excess_return = self.daily_returns
+        if(self.risk_free is not None): excess_return -= self.risk_free  
+        if(self.daily_returns.std() > 0):
+            self.sharpe = float((excess_return.mean() / self.daily_returns.std()) * np.sqrt(252))
+        else: 
+            self.sharpe = np.nan
 
         # Rolling sharpe
-        self.rolling_sharpe = (self.daily_returns.rolling(window=252).mean() / self.rolling_volatility) * 252
+        self.rolling_sharpe = (excess_return.rolling(window=252).mean() / self.rolling_volatility) * 252
 
         # Exposure
         self.exposure = 1 - self.cash.loc[self.portfolio_value.index] / self.portfolio_value
@@ -240,6 +244,8 @@ class BackTester:
             'Rolling Volatility': self.rolling_volatility,
             'Rolling Sharpe': self.rolling_sharpe,
             'Exposure': self.exposure,
+            'Risk-free': self.risk_free,
+            'Benchmark': self.benchmark,
             'Metrics': {
                 'Min': float(self.portfolio_value.min()),
                 'Max': float(self.portfolio_value.max()),
@@ -250,10 +256,33 @@ class BackTester:
                 'Sharpe': self.sharpe
             }
         }
-    
 
+
+    # makes sure all dates in the weights df are the same dates in risk-free, benchmark
+    # and prices dfs. Weigths df is the "source of truth"
+    def _align_dates(self, start, end):
+        self.weights = self.weights[(self.weights.index >= start) & (self.weights.index <= end)]
+        dates = self.weights.index
+
+        if(self.risk_free is not None):
+            self.risk_free = self.risk_free[(self.risk_free.index >= start) & (self.risk_free.index <= end)]
+            self.risk_free = self.risk_free.reindex(dates)
+            # fills nans with the previous value. if first value is nan, fills with next value
+            self.risk_free = self.risk_free.ffill().bfill()
+
+        if(self.benchmark is not None):
+            self.benchmark = self.benchmark[(self.benchmark.index >= start) & (self.benchmark.index <= end)]
+            self.benchmark = self.benchmark.reindex(dates)
+            # fills nans with the previous value. if first value is nan, fills with next value
+            self.benchmark = self.banchmark.ffill().bfill()
+
+        self._validate_prices_inputs()
+        return dates.tolist()
+        
+    
     # Validate that open prices, close prices and weights have the same index and columns
-    def _validate_inputs(self):
+    # It has to be true, since the weights df was built from the prices_df
+    def _validate_prices_inputs(self):
         if not self.weights.index.isin(self.prices_open.index).all():
             raise ValueError("Some dates in weights are not present in prices_open.")
 

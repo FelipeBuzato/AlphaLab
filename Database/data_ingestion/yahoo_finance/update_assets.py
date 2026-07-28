@@ -2,6 +2,9 @@ import psycopg2
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
+
+CURRENT_DIR = Path(__file__).resolve().parent
 
 ## Connect to PostGres database
 conn = psycopg2.connect(
@@ -25,7 +28,7 @@ existing_assets = {ticker: asset_type for ticker, asset_type in cursor.fetchall(
 print(len(existing_assets), " assets currently in the database.")
 
 ## Get assets universe
-assets_universe_df = pd.read_csv("../assets_universe.csv")
+assets_universe_df = pd.read_csv(CURRENT_DIR.parent / "assets_universe.csv")
 assets_universe = {ticker: asset_type for ticker, asset_type in assets_universe_df.values}
 
 ## For the future:

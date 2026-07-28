@@ -37,3 +37,23 @@ CREATE TABLE IF NOT EXISTS dividends (
 
     PRIMARY KEY (ticker, ex_date)
 );
+
+CREATE TABLE IF NOT EXISTS rates (
+    name VARCHAR(50) PRIMARY KEY,
+    ticker VARCHAR(30),
+    country VARCHAR(30),
+    currency VARCHAR(20),
+    unit VARCHAR(50),
+
+    last_updated TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS rates_values (
+    name VARCHAR(50) REFERENCES rates(name),
+    date DATE,
+    value DOUBLE PRECISION,
+
+    last_updated TIMESTAMP,
+
+    PRIMARY KEY (name, date)
+);
