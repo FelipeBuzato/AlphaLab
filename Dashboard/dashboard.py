@@ -470,27 +470,21 @@ class Dashboard:
 
         app.layout = html.Div([
             # Summary statistics
-            html.Details([
-                html.Summary("Summary Statistics", style={"color": self.colors['titles']}),
-                stats_html
-            ], open=True),
+            stats_html,
 
-            html.Details([
-                html.Summary("Backtest Charts", style={"color": self.colors['titles']}),
-                html.Div([
-                        plots_html, 
-                        pannel_html
-                        ], 
-                        style={
-                                "display": "flex", 
-                                "flexDirection": "row", 
-                                "borderTop": "2px solid " + self.colors['border'],
-                                "borderLeft": "2px solid " + self.colors['border'],
-                                "borderRight": "2px solid " + self.colors['border'],
-                            }
-                ),
-            ], open=True),
             # Plots + Lateral Pannel
+            html.Div([
+                    plots_html, 
+                    pannel_html
+                    ], 
+                    style={
+                            "display": "flex", 
+                            "flexDirection": "row", 
+                            "borderTop": "2px solid " + self.colors['border'],
+                            "borderLeft": "2px solid " + self.colors['border'],
+                            "borderRight": "2px solid " + self.colors['border'],
+                        }
+            ),
             
             # Orders History
             html.Div([
