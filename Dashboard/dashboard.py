@@ -45,16 +45,21 @@ class Dashboard:
         self.rolling_sharpe = self.results['Rolling Sharpe']
         self.exposure = self.results['Exposure']
 
+        if(self.results['Risk-free'] is not None):
+            self.risk_free_pv = self.results['Risk-free']['portfolio_value']
+        else:
+            self.risk_free_pv = [None] * len(self.portfolio_value.index)
+
         self.define_template()
         
         fig = make_subplots(
-            rows=7, 
+            rows=8, 
             cols=1, 
-            subplot_titles=("Portfolio Value", "Drawdown", "Cumulative Returns", "Daily Returns", 
+            subplot_titles=("Portfolio Value", "", "Drawdown", "Cumulative Returns", "Daily Returns", 
                             "Rolling Annualized Volatility", "Rolling Annualized Sharpe", "Exposure"),
             shared_xaxes=True,
-            row_heights=[0.25, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125],
-            vertical_spacing=0.03
+            row_heights=[0.279, 0.001, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12],
+            vertical_spacing=0.035
         )
 
         # Portfolio Value 
@@ -63,6 +68,20 @@ class Dashboard:
         padding = 0.05 * (y.max() - y.min())
         lower = y.min() - padding
         upper = y.max() + padding
+
+        # risk-free portfolio
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=self.risk_free_pv,
+                mode="lines",
+                line=dict(color=self.colors['risk_free'], width=1, dash="dot"),
+                name="Risk-free Portfolio",
+                showlegend=True,
+                visible="legendonly"
+            ),
+            row=1, col=1
+        )
 
         # Linha invisível que servirá de base para o preenchimento
         fig.add_trace(
@@ -86,10 +105,12 @@ class Dashboard:
                 line=dict(color=self.colors['portfolio_value'], width=1),
                 fill="tonexty",
                 fillcolor=self.colors['plot_pv_fill'],
-                name="Portfolio Value"
+                name="Portfolio Value",
+                showlegend=True
             ),
             row=1, col=1
         )
+
         fig.update_yaxes(title_text="Value", range=[lower, upper], row=1, col=1)
 
         # Drawdown
@@ -101,11 +122,12 @@ class Dashboard:
                 line=dict(color=self.colors['drawdown'], width=1),
                 fill="tozeroy",
                 fillcolor=self.colors['plot_drawdown_fill'],
-                name="Drawdown"
+                name="Drawdown",
+                showlegend=False,
             ),
-            row=2, col=1
+            row=3, col=1
         )
-        fig.update_yaxes(title_text="Drawdown (%)", row=2, col=1)
+        fig.update_yaxes(title_text="Drawdown (%)", row=3, col=1)
 
         # Cummulative Returns
         y = round(100*self.cum_daily_returns, 2)
@@ -124,7 +146,7 @@ class Dashboard:
                 hoverinfo="skip",
                 showlegend=False,
             ),
-            row=3,
+            row=4,
             col=1
         )
 
@@ -136,11 +158,12 @@ class Dashboard:
                 line=dict(color=self.colors['cum_returns'], width=1),
                 fill="tonexty",
                 fillcolor=self.colors['plot_cum_returns_fill'],
-                name="Cumulative Returns"
+                name="Cumulative Returns",
+                showlegend=False
             ),
-            row=3, col=1
+            row=4, col=1
         )
-        fig.update_yaxes(title_text="Cum Returns (%)", range=[lower, upper], row=3, col=1)
+        fig.update_yaxes(title_text="Cum Returns (%)", range=[lower, upper], row=4, col=1)
 
         # Daily Returns
         bar_colors = ["#00FF66" if x >= 0 else "#FF3333"
@@ -150,11 +173,12 @@ class Dashboard:
                 x=self.daily_returns.index.tolist(),
                 y=round(100*self.daily_returns, 2),
                 marker_color=bar_colors,
-                name="Daily Returns"
+                name="Daily Returns",
+                showlegend=False
             ),
-            row=4, col=1
+            row=5, col=1
         )
-        fig.update_yaxes(title_text="Daily Returns (%)", row=4, col=1)
+        fig.update_yaxes(title_text="Daily Returns (%)", row=5, col=1)
 
         # Rolling Volatility
         fig.add_trace(
@@ -163,11 +187,12 @@ class Dashboard:
                 y=round(100*self.rolling_volatility, 2),
                 mode="lines",
                 line_color=self.colors['volatility'],
-                name="Rolling Volatility"
+                name="Rolling Volatility",
+                showlegend=False
             ),
-            row=5, col=1
+            row=6, col=1
         )
-        fig.update_yaxes(title_text="Rolling Vol (%)", row=5, col=1)
+        fig.update_yaxes(title_text="Rolling Vol (%)", row=6, col=1)
 
         # Rolling Sharpe
         fig.add_trace(
@@ -176,11 +201,12 @@ class Dashboard:
                 y=round(self.rolling_sharpe, 2),
                 mode="lines",
                 line_color=self.colors['sharpe'],
-                name="Rolling Sharpe"
+                name="Rolling Sharpe",
+                showlegend=False
             ),
-            row=6, col=1
+            row=7, col=1
         )
-        fig.update_yaxes(title_text="Rolling Sharpe", row=6, col=1)
+        fig.update_yaxes(title_text="Rolling Sharpe", row=7, col=1)
 
         # Exposure
         fig.add_trace(
@@ -191,21 +217,23 @@ class Dashboard:
                 line_color=self.colors['exposure'],
                 fill="tozeroy",
                 fillcolor=self.colors['plot_exposure_fill'],
-                name="Exposure"
+                name="Exposure",
+                showlegend=False
             ),
-            row=7, col=1
+            row=8, col=1
         )
-        fig.update_yaxes(title_text="Exposure", row=7, col=1)
+        fig.update_yaxes(title_text="Exposure", row=8, col=1)
         
-        fig.update_xaxes(title_text="Date", row=7, col=1)
+        fig.update_xaxes(title_text="", row=8, col=1)
 
         fig.update_xaxes(showgrid=True, 
                          gridcolor=self.colors['gridcolor'],
                          gridwidth=1, 
                          zeroline=False, 
                          showline=True, 
+                         showticklabels=True,
                          linecolor=self.colors['linecolor'],
-                         tickfont={"color": self.colors["plot_font"]},
+                         tickfont={"size": 10, "color": self.colors["plot_dates_font"]},
                          title_font={"color": self.colors["plot_font"]},
         )
         fig.update_yaxes(showgrid=True, 
@@ -221,12 +249,13 @@ class Dashboard:
             title="Backtest Results",
             title_x=0.5,
             title_xanchor='center',
-            height=1400,
-            showlegend=False,
+            height=4000,
+            #showlegend=False,
             template="alpha",
             plot_bgcolor=self.colors['plot_bgcolor'],
             paper_bgcolor=self.colors['paper_bgcolor'],
-            font={"color": self.colors["plot_font"], "size": 12}
+            font={"color": self.colors["plot_font"], "size": 12},
+            legend=dict(orientation="h", y=0.77, x=0, xanchor="left", yanchor="middle", font=dict(size=11))
         )
 
         return fig
@@ -249,6 +278,12 @@ class Dashboard:
         max_drawdown = self.results['Metrics']['Max Drawdown']
         volatility = self.results['Metrics']['Volatility']
         trades = self.orders.shape[0]
+
+        self.risk_free_name = None
+        self.risk_free_cum_return = None
+        if(self.results['Risk-free'] is not None):
+            self.risk_free_name = self.results['Risk-free']['name']
+            self.risk_free_cum_return = round(100*self.results['Risk-free']['cum_return'], 2)
 
         app = Dash(__name__)
 
@@ -299,7 +334,7 @@ class Dashboard:
             }
         )
 
-        plots_html = html.Div([dcc.Graph(id="backtest-graph", figure=fig, style={"height": "1400px"})],
+        plots_html = html.Div([dcc.Graph(id="backtest-graph", figure=fig, style={"height": "1800px"})],
                                style={"width": "77%"})
         
         portfolio_performance_html = html.Div(id="info")
@@ -435,20 +470,28 @@ class Dashboard:
 
         app.layout = html.Div([
             # Summary statistics
-            stats_html,
-            # Plots + Lateral Pannel
-            html.Div([
-                      plots_html, 
-                      pannel_html
-                      ], 
-                      style={
-                             "display": "flex", 
-                             "flexDirection": "row", 
-                             "borderTop": "2px solid " + self.colors['border'],
-                             "borderLeft": "2px solid " + self.colors['border'],
-                             "borderRight": "2px solid " + self.colors['border'],
+            html.Details([
+                html.Summary("Summary Statistics", style={"color": self.colors['titles']}),
+                stats_html
+            ], open=True),
+
+            html.Details([
+                html.Summary("Backtest Charts", style={"color": self.colors['titles']}),
+                html.Div([
+                        plots_html, 
+                        pannel_html
+                        ], 
+                        style={
+                                "display": "flex", 
+                                "flexDirection": "row", 
+                                "borderTop": "2px solid " + self.colors['border'],
+                                "borderLeft": "2px solid " + self.colors['border'],
+                                "borderRight": "2px solid " + self.colors['border'],
                             }
-            ),
+                ),
+            ], open=True),
+            # Plots + Lateral Pannel
+            
             # Orders History
             html.Div([
                     orders_history_html,

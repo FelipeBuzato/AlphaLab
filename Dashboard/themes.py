@@ -10,6 +10,7 @@ LIGHT_THEME = {
 
     # plots
     "portfolio_value": "dodgerblue",
+    "risk_free": "#7DA5B3",
     "drawdown": "red",
     "cum_returns": "blue",
     "volatility": "purple",
@@ -24,6 +25,7 @@ LIGHT_THEME = {
     "plot_drawdown_fill": "rgba(239, 83, 80, 0.26)",
     "plot_cum_returns_fill": "rgba(30,136,229,0.20)",
     "plot_exposure_fill": "rgba(236,118,173,0.17)",
+    "plot_dates_font": "#618DA3",
 
     # pannel
     "date": "#4F5B6D",
@@ -62,6 +64,7 @@ BLOOMBERG_THEME = {
 
     # plots
     "portfolio_value": "white",#"dodgerblue",
+    "risk_free": "#333A3D",
     "drawdown": "red",
     "cum_returns": "blue",
     "volatility": "hotpink",
@@ -69,13 +72,14 @@ BLOOMBERG_THEME = {
     "exposure": "hotpink",
     "plot_bgcolor": "#0B091A",
     "paper_bgcolor": "black",# "#F8F9FA",
-    "gridcolor": "#333A3D",
+    "gridcolor": "#1B1E20",
     "linecolor": "#8FA6AD",
     "plot_font": "white",
     "plot_pv_fill": "rgba(94, 179, 255, 0.23)",
     "plot_drawdown_fill": "rgba(239, 83, 80, 0.26)",
     "plot_cum_returns_fill": "rgba(30,136,229,0.20)",
     "plot_exposure_fill": "rgba(236,118,173,0.17)",
+    "plot_dates_font": "#7F8A91",
 
     # pannel
     "date": "white",

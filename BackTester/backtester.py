@@ -208,9 +208,15 @@ class BackTester:
         # Annualized volatility
         self.annualized_volatility = float(self.daily_returns.std() * np.sqrt(252))
 
+        # daily risk-free returns and risk-free portfolio
+        if(self.risk_free is not None):
+            self.risk_free['daily_returns'] = (1 + self.risk_free['values'] / 100)**(1/252)-1
+            self.risk_free['cum_return'] = (1 + self.risk_free['daily_returns']).prod() - 1
+            self.risk_free['portfolio_value'] = (1 + self.risk_free['daily_returns']).cumprod() * self.initial_capital
+
         # Sharpe ratio
-        excess_return = self.daily_returns
-        if(self.risk_free is not None): excess_return -= self.risk_free  
+        excess_return = self.daily_returns.copy()
+        if(self.risk_free is not None): excess_return -= self.risk_free['daily_returns']  
         if(self.daily_returns.std() > 0):
             self.sharpe = float((excess_return.mean() / self.daily_returns.std()) * np.sqrt(252))
         else: 
@@ -265,20 +271,24 @@ class BackTester:
         dates = self.weights.index
 
         if(self.risk_free is not None):
-            self.risk_free = self.risk_free[(self.risk_free.index >= start) & (self.risk_free.index <= end)]
-            self.risk_free = self.risk_free.reindex(dates)
+            risk_free_values = self.risk_free['values']
+            risk_free_values = risk_free_values[(risk_free_values.index >= start) & (risk_free_values.index <= end)]
+            risk_free_values = risk_free_values.reindex(dates)
             # fills nans with the previous value. if first value is nan, fills with next value
-            self.risk_free = self.risk_free.ffill().bfill()
+            risk_free_values = risk_free_values.ffill().bfill()
+            self.risk_free['values'] = risk_free_values
 
         if(self.benchmark is not None):
-            self.benchmark = self.benchmark[(self.benchmark.index >= start) & (self.benchmark.index <= end)]
-            self.benchmark = self.benchmark.reindex(dates)
+            benchmark_values = self.benchmark['values']
+            benchmark_values = benchmark_values[(benchmark_values.index >= start) & (benchmark_values.index <= end)]
+            benchmark_values = benchmark_values.reindex(dates)
             # fills nans with the previous value. if first value is nan, fills with next value
-            self.benchmark = self.banchmark.ffill().bfill()
+            benchmark_values = benchmark_values.ffill().bfill()
+            self.benchmark['values'] = benchmark_values
 
         self._validate_prices_inputs()
         return dates.tolist()
-        
+
     
     # Validate that open prices, close prices and weights have the same index and columns
     # It has to be true, since the weights df was built from the prices_df
