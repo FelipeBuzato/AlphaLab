@@ -2,13 +2,14 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
+import warnings
 from .execution.perfect_execution import PerfectExecutionExecutor
 from .execution.fixed_slippage import FixedSlippageExecutor
 from .execution.volume_slippage import VolumeSlippageExecutor
 
 
 class BackTester:
-    def __init__(self, prices_open, prices_close, volume=None, initial_capital=100000, rebalance='D', 
+    def __init__(self, prices_open, prices_close, volume=None, initial_capital=100000, rebalance='Daily', 
                  execution_method = 'volume slippage', transaction_cost_rate = 0.0005, 
                  slippage_rate=0.001, risk_free=None, benchmark=None):
         
@@ -22,7 +23,11 @@ class BackTester:
         self.slippage_rate = slippage_rate
         self.risk_free = risk_free
         self.benchmark = benchmark
+        # Benchmark must be a strategy previously backtested!
         
+        self.strategy_name = None
+        self.start_date = None
+        self.end_date = None
         self.cash = None
         self.weights = None
         self.realized_weights = None
@@ -50,7 +55,7 @@ class BackTester:
 
 
     # Run backtest
-    def run(self, weights, start, end):
+    def run(self, strategy, start, end):
 
         if(isinstance(start, str)):
             start = datetime.strptime(start, "%Y-%m-%d").date()
@@ -59,6 +64,13 @@ class BackTester:
         
         if start >= end:
             raise ValueError("Start date must be before end date.")
+
+        self.start_date = start
+        self.end_date = end
+
+        # Initialize strategy name and weights
+        self.strategy_name = strategy['name']
+        weights = strategy['weights']
         
         # Order executor
         self.order_executor = self.order_executor = self.get_order_executor(self.execution_method, self.transaction_cost_rate, self.slippage_rate)
@@ -106,25 +118,25 @@ class BackTester:
     # Check if should rebalance portfolio based on the rebalance strategy
     def should_rebalance(self, previous_date, current_date):
 
-        if(self.rebalance == 'D'):
+        if(self.rebalance == 'Daily'):
             if(previous_date.day != current_date.day):
                 return True
             else:
                 return False
         
-        elif(self.rebalance == 'M'):
+        elif(self.rebalance == 'Montlhy'):
             if(previous_date.month != current_date.month):
                 return True
             else:
                 return False
             
-        elif(self.rebalance == 'Y'):
+        elif(self.rebalance == 'Yearly'):
             if(previous_date.year != current_date.year):
                 return True
             else:
                 return False
             
-        elif(self.rebalance == "W"):
+        elif(self.rebalance == "Weekly"):
             if(current_date.isocalendar()[1] != previous_date.isocalendar()[1]):
                 return True
             else:
@@ -209,14 +221,14 @@ class BackTester:
         self.annualized_volatility = float(self.daily_returns.std() * np.sqrt(252))
 
         # daily risk-free returns and risk-free portfolio
-        if(self.risk_free is not None):
-            self.risk_free['daily_returns'] = (1 + self.risk_free['values'] / 100)**(1/252)-1
-            self.risk_free['cum_return'] = (1 + self.risk_free['daily_returns']).prod() - 1
-            self.risk_free['portfolio_value'] = (1 + self.risk_free['daily_returns']).cumprod() * self.initial_capital
+        if(self.risk_free is None):
+            self.risk_free = {'name': None, 'values': pd.Series(0.0, index=self.portfolio_value.index)}
+        self.risk_free['daily_returns'] = (1 + self.risk_free['values'] / 100)**(1/252)-1
+        self.risk_free['cum_return'] = (1 + self.risk_free['daily_returns']).prod() - 1
+        self.risk_free['portfolio_value'] = (1 + self.risk_free['daily_returns']).cumprod() * self.initial_capital
 
         # Sharpe ratio
-        excess_return = self.daily_returns.copy()
-        if(self.risk_free is not None): excess_return -= self.risk_free['daily_returns']  
+        excess_return = self.daily_returns - self.risk_free['daily_returns']
         if(self.daily_returns.std() > 0):
             self.sharpe = float((excess_return.mean() / self.daily_returns.std()) * np.sqrt(252))
         else: 
@@ -236,13 +248,20 @@ class BackTester:
             orders = pd.DataFrame(columns=orders_columns)
         else:
             orders = pd.DataFrame(orders)
+
+        # Benchmark
+        excess_return_over_benchmark, benchmark_correlation, beta, alpha = self.get_benchmark_stats()
         
         return {
-            'Orders': orders,
-            'Shares': self.shares,
+            'Start Date': self.start_date,
+            'End Date': self.end_date,
+            'Strategy Name': self.strategy_name,
+            'Rebalancing Frequency': self.rebalance,
+            'Initial Capital': self.initial_capital,
             'Portfolio Value': self.portfolio_value,
             'Target Weights': self.weights,
             'Realized Weights': self.realized_weights,
+            'Shares': self.shares,
             'Cash': self.cash,
             'Daily Returns': self.daily_returns,
             'Cumulative Daily Returns': self.cum_daily_returns,
@@ -250,6 +269,7 @@ class BackTester:
             'Rolling Volatility': self.rolling_volatility,
             'Rolling Sharpe': self.rolling_sharpe,
             'Exposure': self.exposure,
+            'Orders': orders,
             'Risk-free': self.risk_free,
             'Benchmark': self.benchmark,
             'Metrics': {
@@ -259,12 +279,45 @@ class BackTester:
                 'CAGR': self.cagr,
                 'Max Drawdown': self.max_drawdown,
                 'Volatility': self.annualized_volatility,
-                'Sharpe': self.sharpe
+                'Sharpe': self.sharpe,
+                'Benchmark': {
+                    'Excess Return': excess_return_over_benchmark,
+                    'Correlation': benchmark_correlation,
+                    'Alpha': alpha,
+                    'Beta': beta
+                }
             }
         }
 
 
-    # makes sure all dates in the weights df are the same dates in risk-free, benchmark
+    def get_benchmark_stats(self):
+        if(self.benchmark is None):
+            self.benchmark = {'Strategy Name': None, 
+                              'Portfolio Value': pd.Series(np.nan, index=self.portfolio_value.index),
+                              'Metrics': {'Cumulative Return': None}}
+            return None, None, None, None
+
+        # Compute excess return over benchmark, correlation, beta and alpha
+        benchmark_total_return = self.benchmark['Metrics']['Cumulative Return']
+        excess_return = self.cum_return - benchmark_total_return
+
+        benchmark_daily_returns = self.benchmark['Daily Returns']
+        risk_free_daily_returns = self.risk_free['daily_returns']
+        strategy_daily_returns = self.daily_returns
+
+        correlation = strategy_daily_returns.corr(benchmark_daily_returns)
+
+        rp = strategy_daily_returns - risk_free_daily_returns
+        rb = benchmark_daily_returns - risk_free_daily_returns
+
+        beta = rp.cov(rb) / rb.var()
+        alpha_daily = rp.mean() - beta * rb.mean()
+        alpha_annual = (1 + alpha_daily)**252 - 1
+
+        return excess_return, correlation, beta, alpha_annual
+            
+
+    # Makes sure all dates in the weights df are the same dates in risk-free, benchmark
     # and prices dfs. Weigths df is the "source of truth"
     def _align_dates(self, start, end):
         self.weights = self.weights[(self.weights.index >= start) & (self.weights.index <= end)]
@@ -279,12 +332,16 @@ class BackTester:
             self.risk_free['values'] = risk_free_values
 
         if(self.benchmark is not None):
-            benchmark_values = self.benchmark['values']
+            benchmark_values = self.benchmark['Portfolio Value']
             benchmark_values = benchmark_values[(benchmark_values.index >= start) & (benchmark_values.index <= end)]
             benchmark_values = benchmark_values.reindex(dates)
-            # fills nans with the previous value. if first value is nan, fills with next value
-            benchmark_values = benchmark_values.ffill().bfill()
-            self.benchmark['values'] = benchmark_values
+
+            if benchmark_values.isna().any():
+                warnings.warn("Benchmark does not fully cover the backtest period. Missing values were filled.", UserWarning)
+                # fills nans with the previous value. if first value is nan, fills with next value
+                benchmark = benchmark.ffill().bfill()
+                
+            self.benchmark['Portfolio Value'] = benchmark_values
 
         self._validate_prices_inputs()
         return dates.tolist()

@@ -56,6 +56,18 @@ def MA_strategy(prices, long_window, short_window=None):
     return weights
 
 
+def buy_and_hold(prices):
+    """
+    BUY AND HOLD STRATEGY
+
+    Buy assets and hold them until the end
+    """
+    weights = prices.notna()
+    weights = weights.div(weights.sum(axis=1), axis="index").fillna(0)
+    return weights
+
+
+
 def cash_only(prices):
     weights = prices * 0
     return weights

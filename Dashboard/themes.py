@@ -8,9 +8,18 @@ LIGHT_THEME = {
     "sum_sharpe": "#2563EB",
     "sum_backgroundColor": "#F8F9FA",
 
+    # Backtest Details
+    "bd_titles": "black",
+    "bd_names": "black",
+    "bd_values": "black",
+    "bd_border": "#8FAAB8",
+    "bd_backgroundColor": "#F8F9FA",
+    "bd_block_backgroundColor": "#F8F9FA",
+
     # plots
     "portfolio_value": "dodgerblue",
     "risk_free": "#7DA5B3",
+    "benchmark": "orange",
     "drawdown": "red",
     "cum_returns": "blue",
     "volatility": "purple",
@@ -26,6 +35,7 @@ LIGHT_THEME = {
     "plot_cum_returns_fill": "rgba(30,136,229,0.20)",
     "plot_exposure_fill": "rgba(236,118,173,0.17)",
     "plot_dates_font": "#618DA3",
+    "spike": "#7795A3",
 
     # pannel
     "date": "#4F5B6D",
@@ -62,9 +72,18 @@ BLOOMBERG_THEME = {
     "sum_sharpe": "#2563EB",
     "sum_backgroundColor": "black",
 
+    # Backtest Details
+    "bd_titles": "black",
+    "bd_names": "#DAE2EC",
+    "bd_values": "white",
+    "bd_border": "#8FAAB8",
+    "bd_backgroundColor": "black",
+    "bd_block_backgroundColor": "#020911",
+
     # plots
     "portfolio_value": "white",#"dodgerblue",
     "risk_free": "#333A3D",
+    "benchmark": "orange",
     "drawdown": "red",
     "cum_returns": "blue",
     "volatility": "hotpink",
@@ -80,6 +99,7 @@ BLOOMBERG_THEME = {
     "plot_cum_returns_fill": "rgba(30,136,229,0.20)",
     "plot_exposure_fill": "rgba(236,118,173,0.17)",
     "plot_dates_font": "#7F8A91",
+    "spike": "#A4C2D1",
 
     # pannel
     "date": "white",

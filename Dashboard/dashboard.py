@@ -1,10 +1,10 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
-from dash import Dash, dcc, html, Input, Output, dash_table
+from dash import Dash, dcc, html, Input, Output, dash_table, ALL, State, callback, ctx
 from datetime import datetime
 import pandas as pd
-from Dashboard.helper_classes import MetricRow, SummaryCard
+from Dashboard.helper_classes import MetricRow, SummaryCard, CollapsibleSection, DetailBlock
 from Dashboard.themes import THEME_COLORS
 
 
@@ -44,11 +44,8 @@ class Dashboard:
         self.rolling_volatility = self.results['Rolling Volatility']
         self.rolling_sharpe = self.results['Rolling Sharpe']
         self.exposure = self.results['Exposure']
-
-        if(self.results['Risk-free'] is not None):
-            self.risk_free_pv = self.results['Risk-free']['portfolio_value']
-        else:
-            self.risk_free_pv = [None] * len(self.portfolio_value.index)
+        self.risk_free_pv = self.results['Risk-free']['portfolio_value']
+        self.benchmark_pv = self.results['Benchmark']['Portfolio Value']
 
         self.define_template()
         
@@ -65,9 +62,11 @@ class Dashboard:
         # Portfolio Value 
         y = self.portfolio_value
         x = y.index
-        padding = 0.05 * (y.max() - y.min())
-        lower = y.min() - padding
-        upper = y.max() + padding
+        min_val = min(pd.concat([y, self.benchmark_pv]))
+        max_val = max(pd.concat([y, self.benchmark_pv]))
+        padding = 0.05 * (max_val - min_val)
+        lower = min_val - padding
+        upper = max_val + padding
 
         # risk-free portfolio
         fig.add_trace(
@@ -79,6 +78,20 @@ class Dashboard:
                 name="Risk-free Portfolio",
                 showlegend=True,
                 visible="legendonly"
+            ),
+            row=1, col=1
+        )
+
+        # Benchmark portfolio
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=self.benchmark_pv,
+                mode="lines",
+                line=dict(color=self.colors['benchmark'], width=1),
+                name="Benchmark",
+                showlegend=True,
+                #visible="legendonly"
             ),
             row=1, col=1
         )
@@ -116,7 +129,7 @@ class Dashboard:
         # Drawdown
         fig.add_trace(
             go.Scatter(
-                x=self.drawdown.index.tolist(),
+                x=x,
                 y=round(100*self.drawdown, 2),
                 mode="lines",
                 line=dict(color=self.colors['drawdown'], width=1),
@@ -170,7 +183,7 @@ class Dashboard:
                         for x in 100*self.daily_returns]
         fig.add_trace(
             go.Bar(
-                x=self.daily_returns.index.tolist(),
+                x=x,
                 y=round(100*self.daily_returns, 2),
                 marker_color=bar_colors,
                 name="Daily Returns",
@@ -183,7 +196,7 @@ class Dashboard:
         # Rolling Volatility
         fig.add_trace(
             go.Scatter(
-                x=self.rolling_volatility.index.tolist(),
+                x=x,
                 y=round(100*self.rolling_volatility, 2),
                 mode="lines",
                 line_color=self.colors['volatility'],
@@ -197,7 +210,7 @@ class Dashboard:
         # Rolling Sharpe
         fig.add_trace(
             go.Scatter(
-                x=self.rolling_sharpe.index.tolist(),
+                x=x,
                 y=round(self.rolling_sharpe, 2),
                 mode="lines",
                 line_color=self.colors['sharpe'],
@@ -211,7 +224,7 @@ class Dashboard:
         # Exposure
         fig.add_trace(
             go.Scatter(
-                x=self.exposure.index.tolist(),
+                x=x,
                 y=round(self.exposure, 2),
                 mode="lines",
                 line_color=self.colors['exposure'],
@@ -226,6 +239,8 @@ class Dashboard:
         
         fig.update_xaxes(title_text="", row=8, col=1)
 
+        #fig.update_traces(xaxis="x")
+
         fig.update_xaxes(showgrid=True, 
                          gridcolor=self.colors['gridcolor'],
                          gridwidth=1, 
@@ -235,6 +250,12 @@ class Dashboard:
                          linecolor=self.colors['linecolor'],
                          tickfont={"size": 10, "color": self.colors["plot_dates_font"]},
                          title_font={"color": self.colors["plot_font"]},
+                         showspikes=True,
+                         spikemode="across+toaxis",
+                         spikesnap="cursor",
+                         spikecolor=self.colors['spike'],
+                         spikethickness=0.5,
+                         spikedash="dot"
         )
         fig.update_yaxes(showgrid=True, 
                          gridcolor=self.colors['gridcolor'],
@@ -246,16 +267,19 @@ class Dashboard:
                          title_font={"color": self.colors["plot_font"]},
         )
         fig.update_layout(
-            title="Backtest Results",
-            title_x=0.5,
-            title_xanchor='center',
-            height=4000,
+            title=None,
+            margin=dict(t=30),
+            height=1800,
             #showlegend=False,
+            hovermode="x unified",
+            #hoversubplots="axis",
+            hoverdistance=-1,
             template="alpha",
             plot_bgcolor=self.colors['plot_bgcolor'],
             paper_bgcolor=self.colors['paper_bgcolor'],
             font={"color": self.colors["plot_font"], "size": 12},
-            legend=dict(orientation="h", y=0.77, x=0, xanchor="left", yanchor="middle", font=dict(size=11))
+            legend=dict(orientation="h", y=0.77, x=0, xanchor="left", yanchor="middle", font=dict(size=11)),
+            uirevision="constant" 
         )
 
         return fig
@@ -263,6 +287,19 @@ class Dashboard:
 
     def show_dashboard(self, fig):
 
+        strategy_name = self.results['Strategy Name']
+        start_date = self.results['Start Date']
+        end_date = self.results['End Date']
+        initial_capital = self.results['Initial Capital']
+        rebalancing_frequency = self.results['Rebalancing Frequency']
+        pv = self.portfolio_value.iloc[-1]
+        max_pv = self.results['Metrics']['Max']
+        min_pv = self.results['Metrics']['Min']
+        total_return = self.cum_daily_returns.iloc[-1]
+        cagr = self.results['Metrics']['CAGR']
+        sharpe = self.results['Metrics']['Sharpe']
+        max_drawdown = self.results['Metrics']['Max Drawdown']
+        volatility = self.results['Metrics']['Volatility']
         self.cash = self.results['Cash']
         self.realized_weights = self.results['Realized Weights']
         self.shares = self.results['Shares']
@@ -271,24 +308,19 @@ class Dashboard:
         self.orders["execution price"] = self.orders["execution price"].map(lambda x: f"${x:,.4f}")
         self.orders["transaction cost"] = self.orders["transaction cost"].map(lambda x: f"${x:,.2f}")
         self.orders["cash after transaction"] = self.orders["cash after transaction"].map(lambda x: f"${x:,.2f}")
-        pv = self.portfolio_value.iloc[-1]
-        total_return = self.cum_daily_returns.iloc[-1]
-        cagr = self.results['Metrics']['CAGR']
-        sharpe = self.results['Metrics']['Sharpe']
-        max_drawdown = self.results['Metrics']['Max Drawdown']
-        volatility = self.results['Metrics']['Volatility']
         trades = self.orders.shape[0]
-
-        self.risk_free_name = None
-        self.risk_free_cum_return = None
-        if(self.results['Risk-free'] is not None):
-            self.risk_free_name = self.results['Risk-free']['name']
-            self.risk_free_cum_return = round(100*self.results['Risk-free']['cum_return'], 2)
+        risk_free_name = self.results['Risk-free']['name']
+        risk_free_cum_return = round(100*self.results['Risk-free']['cum_return'], 2)
+        benchmark_name = self.results['Benchmark']['Strategy Name']
+        benchmark_total_return = self.results['Benchmark']['Metrics']['Cumulative Return']
+        excess_return_over_benchmark = self.results['Metrics']['Benchmark']['Excess Return']
+        benchmark_correlation = self.results['Metrics']['Benchmark']['Correlation']
+        alpha = self.results['Metrics']['Benchmark']['Alpha']
+        beta = self.results['Metrics']['Benchmark']['Beta']
 
         app = Dash(__name__)
 
         stats_html = html.Div([
-                html.H3("Summary Statistics", style={"marginLeft": "20px", "marginTop": "15px", "marginBottom": "15px", "color": self.colors['titles']}),
                 html.Div([
                         SummaryCard("Portfolio Value", f"${pv:,.2f}", self.theme).render("#16A34A" if total_return >= 0 else "#DC2626"),
                         SummaryCard("Total Return", f"{100*total_return:.2f}%", self.theme).render("#16A34A" if total_return >= 0 else "#DC2626"),
@@ -326,13 +358,62 @@ class Dashboard:
                 )
             ],
             style={
-                "borderTop": "2px solid " + self.colors['border'],
                 "borderRight": "2px solid " + self.colors['border'],
                 "borderLeft": "2px solid " + self.colors['border'],
                 "backgroundColor": self.colors['sum_backgroundColor'],
                 "marginBottom": "0px"
             }
         )
+
+        backtest_details = [
+                    {
+                        "title": "General",
+                        "metrics": [
+                            ("Start Date", start_date),
+                            ("End Date", end_date),
+                            ("Strategy", strategy_name),
+                            ("Initial Capital", f"${initial_capital:,.2f}"),
+                            ("Rebalancing Frequency", rebalancing_frequency),
+                        ]
+                    },
+                    {
+                        "title": "Performance",
+                        "metrics": [
+                            ("Final Portfolio Value", f"${pv:,.2f}"),
+                            ("Total Return", f"{100*total_return:.2f}%"),
+                            ("CAGR", f"{100*cagr:.2f}%"),
+                            ("Sharpe", f"{sharpe:.2f}"),
+                            ("Risk-free Rate", risk_free_name),
+                            ("Risk-free Total Return", f"{risk_free_cum_return}%")
+                        ]
+                    },
+                    {
+                        "title": "Benchmark Comparison",
+                        "metrics": [
+                            ("Benchmark", benchmark_name),
+                            ("Benchmark Total Return", 
+                             f"{100*benchmark_total_return:.2f}%" if benchmark_total_return is not None else None),
+                            ("Excess Return Over Benchmark", 
+                             f"{100*excess_return_over_benchmark:.2f}%" if excess_return_over_benchmark is not None else None),
+                            ("Correlation", f"{100*benchmark_correlation:.2f}%" if benchmark_correlation is not None else None),
+                            ("Beta", f"{beta:.3f}" if beta is not None else None),
+                            ("Alpha", f"{alpha:.3f}" if alpha is not None else None)
+                        ]
+                    },
+                    {
+                        "title": "Risk",
+                        "metrics": [
+                            ("Volatility", f"{100*volatility:.2f}%"),
+                            ("Max Drawdown", f"{100*max_drawdown:.2f}%"),
+                            ("Max. Portfolio Value", f"${max_pv:,.2f}"),
+                            ("Min. Portfolio Value", f"${min_pv:,.2f}"),
+                            ("Var", None),
+                        ]
+                    },
+
+        ]
+        
+        backtest_details_html = self.make_backtest_details_html(backtest_details)
 
         plots_html = html.Div([dcc.Graph(id="backtest-graph", figure=fig, style={"height": "1800px"})],
                                style={"width": "77%"})
@@ -427,12 +508,11 @@ class Dashboard:
                                     "padding": "20px",
                                     "backgroundColor": self.colors['pannel_backgroundColor'],
                                     "marginTop": "0px",
-                                    "borderLeft": "2px solid " + self.colors['border'],
+                                    "borderLeft": "1px solid " + self.colors['pannel_horizontal_border'],
                                 }
         )
         
         
-        orders_history_html = html.H3("Orders History", style={"marginBottom": "25px", "paddingLeft": "25px", "color": self.colors['titles']})
         orders_history_dash_table = dash_table.DataTable(id="order-history",
                                                         columns=[{"name": c, "id": c} for c in self.orders.columns],
                                                         data=self.orders.to_dict("records"),
@@ -449,7 +529,6 @@ class Dashboard:
                                                             "color": self.colors['header_font_color']
                                                         },
                                                         style_cell={
-                                                            #"backgroundColor": self.colors['cell_backgroundColor'],
                                                             "border": "1px solid " + self.colors['cell_border'],
                                                             "padding": "6px",
                                                             "textAlign": "center",
@@ -468,37 +547,45 @@ class Dashboard:
                                                         ],
         )
 
-        app.layout = html.Div([
-            # Summary statistics
-            stats_html,
+        backtest_charts_section_html = html.Div([
+                                            plots_html, 
+                                            pannel_html
+                                            ], 
+                                            style={
+                                                    "display": "flex", 
+                                                    "flexDirection": "row", 
+                                                    "borderLeft": "2px solid " + self.colors['border'],
+                                                    "borderRight": "2px solid " + self.colors['border'],
+                                                    "paddingTop": "0px"
+                                            }   
+        )
 
-            # Plots + Lateral Pannel
-            html.Div([
-                    plots_html, 
-                    pannel_html
-                    ], 
-                    style={
-                            "display": "flex", 
-                            "flexDirection": "row", 
-                            "borderTop": "2px solid " + self.colors['border'],
+        orders_html = html.Div([
+                        orders_history_dash_table
+                        ], 
+                        style={
+                            "marginTop": "0px",
+                            "padding": "0px",
                             "borderLeft": "2px solid " + self.colors['border'],
                             "borderRight": "2px solid " + self.colors['border'],
+                            "borderBottom": "2px solid " + self.colors['border'],
+                            "backgroundColor": self.colors['orders_backgroundColor'],
+                            "borderRadius": "0px"
                         }
-            ),
+        )
+
+        app.layout = html.Div([
+            # Summary statistics
+            CollapsibleSection("Summary Statistics", stats_html, "summary", self.colors['sum_backgroundColor'], theme=self.theme).render(),
+
+            # Backtest Details
+            CollapsibleSection("Backtest Details", backtest_details_html, "details", self.colors['bd_backgroundColor'], default_open=False, theme=self.theme).render(),
+
+            # Plots + Lateral Pannel
+            CollapsibleSection("Backtest Charts", backtest_charts_section_html, "charts", self.colors['paper_bgcolor'], theme=self.theme).render(),
             
             # Orders History
-            html.Div([
-                    orders_history_html,
-                    orders_history_dash_table
-                    ], 
-                    style={
-                        "marginTop": "0px",
-                        "padding": "0px",
-                        "border": "2px solid " + self.colors['border'],
-                        "backgroundColor": self.colors['orders_backgroundColor'],
-                        "borderRadius": "0px"
-                    }
-            )
+            CollapsibleSection("Orders History", orders_html, "orders", self.colors['orders_backgroundColor'], default_open=False, theme=self.theme).render(),
         ])
 
         @app.callback(
@@ -581,4 +668,53 @@ class Dashboard:
                 orders.to_dict("records")
             )
 
+        # Callback for collapsible sections
+        @app.callback(
+            Output({"type": "collapse-content", "index": ALL}, "style"),
+            Output({"type": "collapse-icon", "index": ALL}, "children"),
+            Input({"type": "collapse-header", "index": ALL}, "n_clicks"),
+            State({"type": "collapse-content", "index": ALL}, "style"),
+            State({"type": "collapse-content", "index": ALL}, "id"),
+            prevent_initial_call=True,
+        )
+        def toggle_sections(_, styles, ids):
+            trigger = ctx.triggered_id
+            new_styles = []
+            new_icons = []
+
+            for style, component_id in zip(styles, ids):
+                style = style or {}
+                visible = style.get("display", "block") == "block"
+                if component_id["index"] == trigger["index"]:
+                    visible = not visible
+                new_styles.append({
+                    **style,
+                    "display": "block" if visible else "none"
+                })
+                new_icons.append("▼" if visible else "▶")
+            return new_styles, new_icons
+
         return app
+
+
+    def make_backtest_details_html(self, blocks):
+        backtest_details = html.Div([
+                                DetailBlock(
+                                    block["title"],
+                                    block["metrics"],
+                                    self.theme,
+                                ).render()
+                                for block in blocks
+            ],
+            style={
+                "display": "grid",
+                "gridTemplateColumns": "repeat(3, minmax(350px, 1fr))",
+                "gap": "20px",
+                "padding": "20px",
+                "backgroundColor": self.colors["bd_backgroundColor"],
+                "borderLeft": "2px solid " + self.colors["border"],
+                "borderRight": "2px solid " + self.colors["border"]
+            },
+        )
+
+        return backtest_details
