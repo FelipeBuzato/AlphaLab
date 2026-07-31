@@ -71,3 +71,12 @@ def buy_and_hold(prices):
 def cash_only(prices):
     weights = prices * 0
     return weights
+
+
+
+STRATEGIES = {
+    'Buy&Hold': buy_and_hold,
+    'Momentum': momentum_strategy,
+    'MA CrossOver': MA_strategy,
+    'Cash Only': cash_only
+}

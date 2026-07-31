@@ -58,7 +58,7 @@ class VolumeSlippageExecutor(OrderExecutor):
             # have, compute the maximum number of shares that can be bought 
             if(cash < cash_reduction):
                 adjusted_buy_shares = self.adjust_buy_order(cash, volume[ticker], market_open_prices[ticker], self.transaction_cost_rate, self.k, buy_shares[ticker])
-                print(f"Reducing buy order size for ticker {ticker} on {date}: {buy_shares[ticker]} -> {adjusted_buy_shares} shares (-{buy_shares[ticker]-adjusted_buy_shares} = -{(100*(1 - adjusted_buy_shares/buy_shares[ticker])):.2f}%).")
+                #print(f"Reducing buy order size for ticker {ticker} on {date}: {buy_shares[ticker]} -> {adjusted_buy_shares} shares (-{buy_shares[ticker]-adjusted_buy_shares} = -{(100*(1 - adjusted_buy_shares/buy_shares[ticker])):.2f}%).")
                 
                 buy_shares[ticker] = adjusted_buy_shares
                 delta_shares[ticker] = adjusted_buy_shares
