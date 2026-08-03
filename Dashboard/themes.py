@@ -53,13 +53,19 @@ LIGHT_THEME = {
 
     # tables
     "header_backgroundColor": "#DCE8ED",
-    "header_border": "#B8CAD4",
+    "header_border": "#B8D0DF",
     "cell_border": "#D6E4EA",
     "header_font_color": "black",
     "cell_font_color": "black",
     "cell_backgroundColor": "#F8F9FA",
     "cell_backgroundColor_odd": "#F8F9FA",
-    "cell_backgroundColor_even": "#F8F9FA"
+    "cell_backgroundColor_even": "#F8F9FA",
+
+    # Comparison Table
+    "ct_backgroundColor": "#F8F9FA",
+    "back_button": "#F8F9FA",
+    "hover_background": "white",
+    "hover_font": "black",
 }
 
 BLOOMBERG_THEME = {
@@ -124,6 +130,13 @@ BLOOMBERG_THEME = {
     "cell_backgroundColor": "black",
     "cell_backgroundColor_odd": "#2A2D2E",
     "cell_backgroundColor_even": "#121414",
+
+    # Comparison Table
+    "ct_backgroundColor": "black",
+    "back_button": "#2A2B2C",
+    "hover_background": "black",
+    "hover_font": "white",
+
 }
 
 THEME_COLORS = {

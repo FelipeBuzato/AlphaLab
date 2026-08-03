@@ -14,6 +14,7 @@ class ExperimentRunner:
             # backtest strategy
             result = self.run_experiment(experiment)
             self.results.append(result)
+            print(f"Done backtesting {experiment.name}.")
         return self.results
 
 
@@ -65,6 +66,7 @@ class ExperimentRunner:
     def execute_backtest(self, backtester_params, strategy_info, start, end):
         # Generate ideal weights according to strategy
         strategy = self.run_strategy(strategy_info)
+        strategy['params'] = strategy_info['params']
         
         # Backtest Strategy
         assets = strategy_info['params']['assets']

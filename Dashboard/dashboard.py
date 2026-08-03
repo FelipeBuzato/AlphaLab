@@ -2,6 +2,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from plotly.subplots import make_subplots
 from dash import Dash, dcc, html, Input, Output, dash_table, ALL, State, callback, ctx
+from dash.dash_table.Format import Format, Scheme, Symbol, Group
 from datetime import datetime
 import pandas as pd
 from Dashboard.helper_classes import MetricRow, SummaryCard, CollapsibleSection, DetailBlock
@@ -9,19 +10,21 @@ from Dashboard.themes import THEME_COLORS
 
 
 class Dashboard:
-    def __init__(self, results=None, theme='light'):
-        self.results = results
+    def __init__(self, theme='light'):
         self.theme = theme
         self.colors = THEME_COLORS[self.theme]
+        self.results = None
 
 
-    def show(self):
-        fig = self.make_curves()
-        app = self.show_dashboard(fig)
+    def show(self, results):
+        app = Dash(__name__)
+        self.results = results
+        app.layout = self.build_layout()
+        self.register_callbacks(app)
         app.run(jupyter_mode='tab')
 
 
-    def define_template(self):
+    def _define_template(self):
         alpha_template = go.layout.Template(
             layout=go.Layout(
                 font=dict(family="IBM Plex Mono", size=12),
@@ -34,20 +37,21 @@ class Dashboard:
 
 
     def make_curves(self):
-        if self.results is None:
+        results = self.results
+        if results is None:
             raise ValueError("Run the backtest before plotting.")
         
-        self.portfolio_value = self.results['Portfolio Value']
-        self.drawdown = self.results['Drawdown']
-        self.cum_daily_returns = self.results['Cumulative Daily Returns']
-        self.daily_returns = self.results['Daily Returns']
-        self.rolling_volatility = self.results['Rolling Volatility']
-        self.rolling_sharpe = self.results['Rolling Sharpe']
-        self.exposure = self.results['Exposure']
-        self.risk_free_pv = self.results['Risk-free']['portfolio_value']
-        self.benchmark_pv = self.results['Benchmark']['Portfolio Value']
+        portfolio_value = results['Portfolio Value']
+        drawdown = results['Drawdown']
+        cum_daily_returns = results['Cumulative Daily Returns']
+        daily_returns = results['Daily Returns']
+        rolling_volatility = results['Rolling Volatility']
+        rolling_sharpe = results['Rolling Sharpe']
+        exposure = results['Exposure']
+        risk_free_pv = results['Risk-free']['portfolio_value']
+        benchmark_pv = results['Benchmark']['Portfolio Value']
 
-        self.define_template()
+        self._define_template()
         
         fig = make_subplots(
             rows=8, 
@@ -60,10 +64,10 @@ class Dashboard:
         )
 
         # Portfolio Value 
-        y = self.portfolio_value
+        y = portfolio_value
         x = y.index
-        min_val = min(pd.concat([y, self.benchmark_pv]))
-        max_val = max(pd.concat([y, self.benchmark_pv]))
+        min_val = min(pd.concat([y, benchmark_pv]))
+        max_val = max(pd.concat([y, benchmark_pv]))
         padding = 0.05 * (max_val - min_val)
         lower = min_val - padding
         upper = max_val + padding
@@ -72,7 +76,7 @@ class Dashboard:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=self.risk_free_pv,
+                y=risk_free_pv,
                 mode="lines",
                 line=dict(color=self.colors['risk_free'], width=1, dash="dot"),
                 name="Risk-free Portfolio",
@@ -86,12 +90,11 @@ class Dashboard:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=self.benchmark_pv,
+                y=benchmark_pv,
                 mode="lines",
                 line=dict(color=self.colors['benchmark'], width=1),
                 name="Benchmark",
                 showlegend=True,
-                #visible="legendonly"
             ),
             row=1, col=1
         )
@@ -130,7 +133,7 @@ class Dashboard:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=round(100*self.drawdown, 2),
+                y=round(100*drawdown, 2),
                 mode="lines",
                 line=dict(color=self.colors['drawdown'], width=1),
                 fill="tozeroy",
@@ -143,7 +146,7 @@ class Dashboard:
         fig.update_yaxes(title_text="Drawdown (%)", row=3, col=1)
 
         # Cummulative Returns
-        y = round(100*self.cum_daily_returns, 2)
+        y = round(100*cum_daily_returns, 2)
         x = y.index
         padding = 0.05 * (y.max() - y.min())
         lower = y.min() - padding
@@ -180,11 +183,11 @@ class Dashboard:
 
         # Daily Returns
         bar_colors = ["#00FF66" if x >= 0 else "#FF3333"
-                        for x in 100*self.daily_returns]
+                        for x in 100*daily_returns]
         fig.add_trace(
             go.Bar(
                 x=x,
-                y=round(100*self.daily_returns, 2),
+                y=round(100*daily_returns, 2),
                 marker_color=bar_colors,
                 name="Daily Returns",
                 showlegend=False
@@ -197,7 +200,7 @@ class Dashboard:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=round(100*self.rolling_volatility, 2),
+                y=round(100*rolling_volatility, 2),
                 mode="lines",
                 line_color=self.colors['volatility'],
                 name="Rolling Volatility",
@@ -211,7 +214,7 @@ class Dashboard:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=round(self.rolling_sharpe, 2),
+                y=round(rolling_sharpe, 2),
                 mode="lines",
                 line_color=self.colors['sharpe'],
                 name="Rolling Sharpe",
@@ -225,7 +228,7 @@ class Dashboard:
         fig.add_trace(
             go.Scatter(
                 x=x,
-                y=round(self.exposure, 2),
+                y=round(exposure, 2),
                 mode="lines",
                 line_color=self.colors['exposure'],
                 fill="tozeroy",
@@ -285,40 +288,60 @@ class Dashboard:
         return fig
     
 
-    def show_dashboard(self, fig):
+    def build_layout(self, show_back_button=False):
+        fig = self.make_curves()
+        results = self.results
 
-        strategy_name = self.results['Strategy Name']
-        start_date = self.results['Start Date']
-        end_date = self.results['End Date']
-        initial_capital = self.results['Initial Capital']
-        rebalancing_frequency = self.results['Rebalancing Frequency']
-        pv = self.portfolio_value.iloc[-1]
-        max_pv = self.results['Metrics']['Max']
-        min_pv = self.results['Metrics']['Min']
-        total_return = self.cum_daily_returns.iloc[-1]
-        cagr = self.results['Metrics']['CAGR']
-        sharpe = self.results['Metrics']['Sharpe']
-        max_drawdown = self.results['Metrics']['Max Drawdown']
-        volatility = self.results['Metrics']['Volatility']
-        self.cash = self.results['Cash']
-        self.realized_weights = self.results['Realized Weights']
-        self.shares = self.results['Shares']
-        self.orders = self.results['Orders']
-        self.orders["market price"] = self.orders["market price"].map(lambda x: f"${x:,.4f}")
-        self.orders["execution price"] = self.orders["execution price"].map(lambda x: f"${x:,.4f}")
-        self.orders["transaction cost"] = self.orders["transaction cost"].map(lambda x: f"${x:,.2f}")
-        self.orders["cash after transaction"] = self.orders["cash after transaction"].map(lambda x: f"${x:,.2f}")
-        trades = self.orders.shape[0]
-        risk_free_name = self.results['Risk-free']['name']
-        risk_free_cum_return = round(100*self.results['Risk-free']['cum_return'], 2)
-        benchmark_name = self.results['Benchmark']['Strategy Name']
-        benchmark_total_return = self.results['Benchmark']['Metrics']['Cumulative Return']
-        excess_return_over_benchmark = self.results['Metrics']['Benchmark']['Excess Return']
-        benchmark_correlation = self.results['Metrics']['Benchmark']['Correlation']
-        alpha = self.results['Metrics']['Benchmark']['Alpha']
-        beta = self.results['Metrics']['Benchmark']['Beta']
+        # Get variables
+        strategy_name = results['Strategy Name']
+        start_date = results['Start Date']
+        end_date = results['End Date']
+        initial_capital = results['Initial Capital']
+        rebalancing_frequency = results['Rebalancing Frequency']
+        portfolio_value = results['Portfolio Value']
+        pv = portfolio_value.iloc[-1]
+        max_pv = results['Metrics']['Max']
+        min_pv = results['Metrics']['Min']
+        total_return = results['Metrics']['Cumulative Return']
+        cagr = results['Metrics']['CAGR']
+        sharpe = results['Metrics']['Sharpe']
+        max_drawdown = results['Metrics']['Max Drawdown']
+        volatility = results['Metrics']['Volatility']
+        orders = results['Orders'].copy()
+        #orders["market price"] = orders["market price"].map(lambda x: f"${x:,.4f}")
+        #orders["execution price"] = orders["execution price"].map(lambda x: f"${x:,.4f}")
+        #orders["transaction cost"] = orders["transaction cost"].map(lambda x: f"${x:,.2f}")
+        #orders["cash after transaction"] = orders["cash after transaction"].map(lambda x: f"${x:,.2f}")
+        trades = orders.shape[0]
+        risk_free_name = results['Risk-free']['name']
+        risk_free_cum_return = round(100*results['Risk-free']['cum_return'], 2)
+        benchmark_name = results['Benchmark']['Strategy Name']
+        benchmark_total_return = results['Benchmark']['Metrics']['Cumulative Return']
+        excess_return_over_benchmark = results['Metrics']['Benchmark']['Excess Return']
+        benchmark_correlation = results['Metrics']['Benchmark']['Correlation']
+        alpha = results['Metrics']['Benchmark']['Alpha']
+        beta = results['Metrics']['Benchmark']['Beta']
 
-        app = Dash(__name__)
+        # Botão só é criado/incluído se show_back_button for True
+        back_button_html = html.Div(
+            html.Button(
+                "← Backtests table",
+                id="btn-back-to-comparison",
+                n_clicks=0,
+                style={
+                    "padding": "8px 14px",
+                    "fontSize": "12px",
+                    "fontWeight": "500",
+                    "color": self.colors['titles'],
+                    "backgroundColor": self.colors['back_button'],
+                    "border": "1px solid " + self.colors['border'],
+                    "borderRadius": "4px",
+                    "cursor": "pointer",
+                    "margin": "5px"
+                }
+            ),
+            style={"padding": "1px 1px", "backgroundColor": self.colors['sum_backgroundColor']}
+        ) if show_back_button else html.Div()
 
         stats_html = html.Div([
                 html.Div([
@@ -456,15 +479,18 @@ class Dashboard:
                                                     ],
         )
 
+        money_2_decimals = Format(precision=2, scheme=Scheme.fixed, group=Group.yes, groups=3, symbol=Symbol.yes, symbol_prefix="$")
+        money_4_decimals = Format(precision=4, scheme=Scheme.fixed, group=Group.yes, groups=3, symbol=Symbol.yes, symbol_prefix="$")
+
         trades_html = html.H5("Trades", style={"fontSize": "18px", "marginBottom": "20px", "color": self.colors['titles']})
         trades_dash_table = dash_table.DataTable(id="trades-table",
                                                 columns=[
                                                     {"name": "Asset", "id": "Asset"},
                                                     {"name": "Shares", "id": "Shares"},
                                                     {"name": "Side", "id": "Side"},
-                                                    {"name": "Market Price", "id": "Market Price"},
-                                                    {"name": "Execution Price", "id": "Execution Price"},
-                                                    {"name": "Transaction Cost", "id": "Transaction Cost"}
+                                                    {"name": "Market Price", "id": "Market Price", "type": "numeric", "format": money_4_decimals},
+                                                    {"name": "Execution Price", "id": "Execution Price", "type": "numeric", "format": money_4_decimals},
+                                                    {"name": "Transaction Cost", "id": "Transaction Cost", "type": "numeric", "format": money_4_decimals}
                                                 ],
                                                 data=[],
                                                 style_table={"overflowY": "auto"},
@@ -511,11 +537,20 @@ class Dashboard:
                                     "borderLeft": "1px solid " + self.colors['pannel_horizontal_border'],
                                 }
         )
-        
+
+        columns = [{"name": c, "id": c} for c in orders.columns]
+        for column in columns:
+            if(column['name'] in ("market price", "execution price")):
+                column['type'] = "numeric"
+                column['format'] = money_4_decimals
+
+            if(column['name'] in ("transaction cost", "cash after transaction")):
+                column['type'] = "numeric"
+                column['format'] = money_2_decimals
         
         orders_history_dash_table = dash_table.DataTable(id="order-history",
-                                                        columns=[{"name": c, "id": c} for c in self.orders.columns],
-                                                        data=self.orders.to_dict("records"),
+                                                        columns=columns,
+                                                        data=orders.to_dict("records"),
                                                         filter_action="native",
                                                         sort_action="native",
                                                         sort_mode="multi",
@@ -574,7 +609,9 @@ class Dashboard:
                         }
         )
 
-        app.layout = html.Div([
+        layout = html.Div([
+            back_button_html,
+
             # Summary statistics
             CollapsibleSection("Summary Statistics", stats_html, "summary", self.colors['sum_backgroundColor'], theme=self.theme).render(),
 
@@ -588,30 +625,46 @@ class Dashboard:
             CollapsibleSection("Orders History", orders_html, "orders", self.colors['orders_backgroundColor'], default_open=False, theme=self.theme).render(),
         ])
 
+        return layout
+
+
+    def register_callbacks(self, app):
+
         @app.callback(
             Output("info", "children"),
             Output("positions-table", "data"),
             Output("trades-table", "data"),
-            Input("backtest-graph", "clickData")
+            Input("backtest-graph", "clickData"),
+            prevent_initial_call=True
         )
 
         def update(clickData):
-
-            if clickData is None:
+            if self.results is None or clickData is None:
                 return (html.Div("Click on any point.", style={"color": "#64748B"}),
                         [], [])
+
+            results = self.results
+            portfolio_value = results['Portfolio Value']
+            daily_returns = results['Daily Returns']
+            cum_daily_returns = results['Cumulative Daily Returns']
+            cash_values = results['Cash']
+            realized_weights = results['Realized Weights']
+            shares_values = results['Shares']
+            orders_values = results['Orders']
+            drawdown_values = results['Drawdown']
+            exposure_values = results['Exposure']
 
             date = clickData["points"][0]["x"]
             date = datetime.strptime(date, "%Y-%m-%d").date()
 
-            cash = self.cash.loc[date]
-            pv = self.portfolio_value.loc[date]
-            exposure = self.exposure.loc[date]
-            daily_return = self.daily_returns.loc[date]
-            cum_return = self.cum_daily_returns.loc[date]
-            drawdown = self.drawdown.loc[date]
-            shares = self.shares.loc[date]
-            weights = self.realized_weights.loc[date]
+            cash = cash_values.loc[date]
+            pv = portfolio_value.loc[date]
+            exposure = exposure_values.loc[date]
+            daily_return = daily_returns.loc[date]
+            cum_return = cum_daily_returns.loc[date]
+            drawdown = drawdown_values.loc[date]
+            shares = shares_values.loc[date]
+            weights = realized_weights.loc[date]
             values = pv * weights
 
             positions = pd.DataFrame({
@@ -626,7 +679,7 @@ class Dashboard:
             positions["Weight"] = positions["Weight"].map(lambda x: f"{x:.2f}%")
             positions["Value"] = positions["Value"].map(lambda x: f"${x:,.2f}")
 
-            orders = self.orders[self.orders['date'] == date].copy()
+            orders = orders_values[orders_values['date'] == date].copy()
             orders = orders[["ticker", "shares", "side", "market price", "execution price", "transaction cost"]]
             orders = orders.rename(columns={
                 "ticker": "Asset",
@@ -694,7 +747,16 @@ class Dashboard:
                 new_icons.append("▼" if visible else "▶")
             return new_styles, new_icons
 
-        return app
+        # Callback for back button
+        @app.callback(
+            Output("current-page", "data", allow_duplicate=True),
+            Input("btn-back-to-comparison", "n_clicks"),
+            prevent_initial_call=True
+        )
+        def go_back_to_comparison(n_clicks):
+            if n_clicks and n_clicks > 0:
+                return "comparison"
+            return "dashboard"
 
 
     def make_backtest_details_html(self, blocks):

@@ -26,6 +26,7 @@ class BackTester:
         # Benchmark must be a strategy previously backtested!
         
         self.strategy_name = None
+        self.strategy_params = None
         self.start_date = None
         self.end_date = None
         self.cash = None
@@ -68,8 +69,9 @@ class BackTester:
         self.start_date = start
         self.end_date = end
 
-        # Initialize strategy name and weights
+        # Initialize strategy name, params and weights
         self.strategy_name = strategy['name']
+        self.strategy_params = strategy['params']
         weights = strategy['weights']
         
         # Order executor
@@ -256,6 +258,7 @@ class BackTester:
             'Start Date': self.start_date,
             'End Date': self.end_date,
             'Strategy Name': self.strategy_name,
+            'Strategy Params': self.strategy_params,
             'Rebalancing Frequency': self.rebalance,
             'Initial Capital': self.initial_capital,
             'Portfolio Value': self.portfolio_value,
@@ -292,7 +295,8 @@ class BackTester:
 
     def get_benchmark_stats(self):
         if(self.benchmark is None):
-            self.benchmark = {'Strategy Name': None, 
+            self.benchmark = {'Strategy Name': None,
+                              'Strategy Params': None,
                               'Portfolio Value': pd.Series(np.nan, index=self.portfolio_value.index),
                               'Metrics': {'Cumulative Return': None}}
             return None, None, None, None
